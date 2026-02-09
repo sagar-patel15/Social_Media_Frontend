@@ -1,4 +1,10 @@
 // ============================================
+// CONFIGURATION
+// ============================================
+// CHANGE THIS TO YOUR PRODUCTION WEBHOOK URL WHEN READY
+const WEBHOOK_URL = 'https://n8n.intelligens.app/webhook/content';
+
+// ============================================
 // THEME MANAGEMENT
 // ============================================
 const initTheme = () => {
@@ -13,6 +19,27 @@ const toggleTheme = () => {
     localStorage.setItem('theme', newTheme);
 };
 
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+/**
+ * Convert a File object to base64 string
+ * @param {File} file - The file to convert
+ * @returns {Promise<string>} Base64 encoded string
+ */
+const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            // Remove the data:mime/type;base64, prefix
+            const base64String = reader.result.split(',')[1];
+            resolve(base64String);
+        };
+        reader.onerror = (error) => reject(error);
+    });
+};
+
 // Initialize theme on page load
 initTheme();
 
@@ -22,9 +49,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusMessage = document.getElementById('statusMessage');
     const resultContainer = document.getElementById('resultContainer');
     const generatedContent = document.getElementById('generatedContent');
-    const copyBtn = document.getElementById('copyBtn');
-    const themeToggle = document.getElementById('themeToggle');
+
     const placeholder = document.getElementById('placeholder');
+    const uploadLoader = document.getElementById('uploadLoader');
+    const loaderText = document.getElementById('loaderText');
+    const platformsGrid = document.querySelector('.platforms-grid');
+    const themeToggle = document.getElementById('themeToggle');
 
     // Theme toggle event listener
     if (themeToggle) {
@@ -43,31 +73,86 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Get form data
         const formData = new FormData(form);
-        const data = {
-            topic: formData.get('topic'),
-            keywords: formData.get('keywords'),
-            link: formData.get('link')
-        };
+        
+        // Validate - at least topic or video should be provided
+        const topic = formData.get('topic');
+        const keywords = formData.get('keywords');
+        const videoFile = formData.get('video');
+        
+        if (!topic && (!videoFile || videoFile.size === 0)) {
+            showStatus('Please enter a topic or upload a video.', 'error');
+            submitBtn.classList.add('error-shaking');
+            setTimeout(() => submitBtn.classList.remove('error-shaking'), 400);
+            return;
+        }
 
-        // Validate
-        if (!data.topic) {
-            showStatus('Please enter a topic.', 'error');
+        // Check platform selection if no video is uploaded
+        const selectedPlatforms = formData.getAll('platforms');
+        if (selectedPlatforms.length === 0 && (!videoFile || videoFile.size === 0)) {
+            platformsGrid.classList.add('invalid');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const originalText = btnText.textContent;
+            
+            btnText.textContent = 'Please select a platform';
+            submitBtn.classList.add('error-shaking');
+            
+            setTimeout(() => {
+                platformsGrid.classList.remove('invalid');
+                submitBtn.classList.remove('error-shaking');
+                btnText.textContent = originalText;
+            }, 3000);
+            
+            showStatus('Please select at least one target platform.', 'error');
+            return;
+        }
+
+        // Check file size (limit to 100MB for practical reasons)
+        if (videoFile && videoFile.size > 100 * 1024 * 1024) {
+            showStatus('Video file is too large. Please use a file smaller than 100MB.', 'error');
             return;
         }
 
         // Disable button and show loading state
         submitBtn.disabled = true;
+        submitBtn.classList.add('loading');
         const btnText = submitBtn.querySelector('.btn-text');
         const originalText = btnText.textContent;
         btnText.textContent = 'Creating Magic...';
 
+        // Show loader for all requests
+        uploadLoader.style.display = 'flex';
+        if (videoFile && videoFile.size > 0) {
+            loaderText.textContent = 'Uploading & Processing Video...';
+        } else {
+            loaderText.textContent = 'Generating Your Content...';
+        }
+
         try {
-            const response = await fetch('https://n8n.intelligens.app/webhook/content', {
+            // Get selected platforms from FormData
+            const selectedPlatforms = Array.from(formData.getAll('platforms'));
+
+            // Log what we're sending to the webhook for debugging
+            console.log('=== Sending to Webhook (FormData) ===');
+            console.log('Topic:', topic || '(not provided)');
+            console.log('Platforms:', selectedPlatforms.length > 0 ? selectedPlatforms : '(none selected)');
+            console.log('Keywords:', keywords || '(not provided)');
+            if (videoFile && videoFile.size > 0) {
+                console.log('Video File Details:');
+                console.log('  - Name:', videoFile.name);
+                console.log('  - Size:', (videoFile.size / 1024 / 1024).toFixed(2), 'MB');
+                console.log('  - Type:', videoFile.type);
+            } else {
+                console.log('Video: (not provided)');
+            }
+            console.log('========================');
+
+            btnText.textContent = 'Sending to Server...';
+
+            const response = await fetch(WEBHOOK_URL, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
+                // Note: We don't set Content-Type header when sending FormData.
+                // The browser will automatically set it to multipart/form-data with the correct boundary.
+                body: formData
             });
 
             if (response.ok) {
@@ -103,7 +188,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 const items = Array.isArray(responseData) ? responseData : [responseData];
 
                 items.forEach(item => {
-                    // NEW UNIFIED FORMAT (item.posts, item.image)
+                    // 0. YouTube URL check (Primary)
+                    if (item.youtube_url) {
+                        const youtubeBox = document.createElement('div');
+                        youtubeBox.className = 'youtube-success-ultra';
+                        youtubeBox.style.cssText = `
+                            background: linear-gradient(135deg, rgba(255, 90, 95, 0.06) 0%, rgba(217, 119, 6, 0.06) 100%);
+                            border: 1px solid rgba(255, 90, 95, 0.2);
+                            border-radius: 12px;
+                            padding: 12px 20px;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            gap: 6px;
+                            width: 100%;
+                            box-shadow: 0 2px 10px rgba(255, 90, 95, 0.05);
+                            margin-bottom: 10px;
+                        `;
+                        
+                        youtubeBox.innerHTML = `
+                            <div style="display: flex; align-items: center; gap: 8px; color: #D97706; font-weight: 700; font-size: 0.95em; letter-spacing: -0.2px;">
+                                <span style="font-size: 1.3em;">✨</span>
+                                <span>Uploaded Successfully</span>
+                            </div>
+                            <div style="width: 100%; text-align: center;">
+                                <a href="${item.youtube_url}" target="_blank" style="color: #FF5A5F; text-decoration: none; word-break: break-all; font-family: 'Inter', system-ui, sans-serif; font-size: 1.2em; font-weight: 600; transition: all 0.2s;">
+                                    ${item.youtube_url}
+                                </a>
+                            </div>
+                        `;
+                        grid.appendChild(youtubeBox);
+                        hasResults = true;
+                    }
+
+                    // 1. NEW UNIFIED FORMAT (item.posts, item.image)
                     if (item.posts || (item.image && typeof item.image === 'object' && !item.mimeType)) { // Check for new format structure
                         // 1. Instagram
                         const instaData = item.posts.instagram || item.posts.Instagram;
@@ -117,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // 2. X (Twitter)
                         const twitterData = item.posts.twitter || item.posts.Twitter || item.posts.x || item.posts.X;
                         if (twitterData && (twitterData.text || twitterData.id || twitterData.status)) {
-                             let html = `<p>${twitterData.text || 'Tweet posted'}</p>`;
+                             let html = `<p>${twitterData.text}</p>`;
                              if (twitterData.id) {
                                  html += `<p style="margin-top: 10px; font-size: 0.85em; color: var(--light-text);"><strong>ID:</strong> ${twitterData.id}</p>`;
                              }
@@ -133,8 +251,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (fbData) {
                              const id = fbData.post_id || fbData.id;
                              if (id || fbData.status) {
-                                const html = `<p><strong>Post ID:</strong> ${id || 'Pending'}</p>
-                                              <p><strong>Status:</strong> ${fbData.status || 'posted'}</p>`;
+                                let html = `<p><strong>Status:</strong> ${fbData.status || 'posted'}</p>`;
+                                if (id) {
+                                    html += `<p><strong>Post ID:</strong> ${id}</p>`;
+                                }
+                                if (fbData.url) {
+                                    html += `<p style="margin-top: 5px;"><a href="${fbData.url}" target="_blank" style="color: #1877F2; text-decoration: none; font-weight: 600;">View on Facebook <span style="font-size: 0.8em;">↗</span></a></p>`;
+                                }
                                 grid.appendChild(createCard('facebook', '📘', 'Facebook', html));
                                 hasResults = true;
                              }
@@ -159,7 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             try {
                                 const result = JSON.parse(item['X Post Result']);
                                 if (result.text) {
-                                    let html = `<p>${result.text}</p>`;
+                                    let html = `<p>${result.text || ""}</p>`;
                                     if (result.id) {
                                         html += `<p style="margin-top: 10px; font-size: 0.85em; color: var(--light-text);"><strong>ID:</strong> ${result.id}</p>`;
                                     }
@@ -315,32 +438,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (placeholder) placeholder.style.display = 'none';
                 showStatus('Content generated successfully!', 'success');
                 // form.reset(); // Optional: might want to keep inputs for tweaking
-
             } else {
-                showStatus('Failed to generate content. Please try again.', 'error');
+                let errorMsg = 'Failed to generate content.';
+                if (response.status === 413) {
+                    errorMsg = 'Video file is too large for the server to process even after encoding.';
+                } else if (response.status === 404) {
+                    errorMsg = 'Webhook URL not found. Please check if your n8n workflow is active.';
+                } else {
+                    errorMsg += ` (Status: ${response.status})`;
+                }
+                showStatus(errorMsg, 'error');
             }
         } catch (error) {
             console.error('Error:', error);
-            showStatus('An error occurred. Please check your connection.', 'error');
+            let userMsg = 'An error occurred. Please check your connection.';
+            
+            // Provide more specific feedback for common errors
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                userMsg = 'Network error: Could not reach the server. Please check your internet or VPN.';
+            } else if (error.message) {
+                userMsg = `Error: ${error.message}`;
+            }
+            
+            showStatus(userMsg, 'error');
         } finally {
+            // Hide loader
+            uploadLoader.style.display = 'none';
+
             // Reset button state
             submitBtn.disabled = false;
+            submitBtn.classList.remove('loading');
             btnText.textContent = originalText;
         }
     });
 
-    copyBtn.addEventListener('click', () => {
-        const text = generatedContent.textContent;
-        navigator.clipboard.writeText(text).then(() => {
-            const originalText = copyBtn.textContent;
-            copyBtn.textContent = 'Copied!';
-            setTimeout(() => {
-                copyBtn.textContent = originalText;
-            }, 2000);
-        }).catch(err => {
-            console.error('Failed to copy:', err);
-        });
-    });
+
 
     function showStatus(message, type) {
         statusMessage.textContent = message;

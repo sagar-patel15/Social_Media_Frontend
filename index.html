@@ -12,6 +12,11 @@
 <body>
     <div class="main-wrapper">
         <div class="container">
+            <!-- Theme Toggle Button -->
+            <button id="themeToggle" class="theme-toggle" aria-label="Toggle dark mode">
+                <span class="theme-icon sun">☀️</span>
+                <span class="theme-icon moon">🌙</span>
+            </button>
             <div class="split-layout">
                 <!-- Left Side: Form -->
                 <div class="left-panel">
@@ -24,19 +29,36 @@
                             <h2>Social Media Wizard</h2>
                             <p>Transform your ideas into engaging posts in seconds.</p>
                             
-                            <!-- Theme Toggle Button -->
-                            <button id="themeToggle" class="theme-toggle" aria-label="Toggle dark mode">
-                                <span class="theme-icon sun">☀️</span>
-                                <span class="theme-icon moon">🌙</span>
-                            </button>
+
                         </header>
 
-                        <form id="contentForm">
+                        <form id="contentForm" enctype="multipart/form-data">
                             <div class="form-group">
-                                <label for="topic">Topic <span class="required">*</span></label>
+                                <label for="topic">Topic</label>
                                 <div class="input-wrapper">
                                     <span class="input-icon">💡</span>
-                                    <input type="text" id="topic" name="topic" placeholder="e.g., The Future of AI Agents" required>
+                                    <input type="text" id="topic" name="topic" placeholder="e.g., The Future of AI Agents">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Target Platforms</label>
+                                <div class="platforms-grid">
+                                    <label class="platform-checkbox">
+                                        <input type="checkbox" name="platforms" value="facebook">
+                                        <span class="checkbox-custom"></span>
+                                        <span class="platform-label">Facebook</span>
+                                    </label>
+                                    <label class="platform-checkbox">
+                                        <input type="checkbox" name="platforms" value="Instagram">
+                                        <span class="checkbox-custom"></span>
+                                        <span class="platform-label">Instagram</span>
+                                    </label>
+                                    <label class="platform-checkbox">
+                                        <input type="checkbox" name="platforms" value="twitter">
+                                        <span class="checkbox-custom"></span>
+                                        <span class="platform-label">Twitter (X)</span>
+                                    </label>
                                 </div>
                             </div>
 
@@ -49,10 +71,10 @@
                             </div>
 
                             <div class="form-group">
-                                <label for="link">Link (Optional)</label>
+                                <label for="video">Upload a video for YouTube</label>
                                 <div class="input-wrapper">
-                                    <span class="input-icon">🔗</span>
-                                    <input type="url" id="link" name="link" placeholder="https://your-website.com">
+                                    <span class="input-icon">🎥</span>
+                                    <input type="file" id="video" name="video" accept="video/*">
                                 </div>
                             </div>
 
@@ -82,9 +104,7 @@
                             <span class="badge">Ready</span>
                         </div>
                         <div id="generatedContent" class="generated-content"></div>
-                        <button id="copyBtn" class="secondary-button">
-                            <span class="icon">📋</span> Copy to Clipboard
-                        </button>
+
                     </div>
                 </div>
             </div>
@@ -92,6 +112,12 @@
             <footer class="app-footer">
                 <p>Powered by Ideal It Techno Pvt Ltd &bull; Designed for Creators</p>
             </footer>
+        </div>
+    </div>
+    <div id="uploadLoader" class="loader-overlay" style="display: none;">
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <p id="loaderText">Creating Magic...</p>
         </div>
     </div>
     <script src="script.js"></script>
